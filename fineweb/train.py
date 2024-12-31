@@ -21,7 +21,7 @@ from utils.utils import AttributeDict, print_gpu_info, format_large_number
 from model import LitTransformerLM, get_experiment_name
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config_dir', type=str, default='data/dag_data.pt')
+parser.add_argument('--config_dir', type=str)
 parser.add_argument('--debug', action='store_true', help='Run in debug mode (no logging, no checkpoints).')
 
 args, unknown_args = parser.parse_known_args()
