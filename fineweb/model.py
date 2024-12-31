@@ -124,8 +124,6 @@ def get_experiment_name(model_config, data_config, train_config):
         model_str += f' - {model_config.residual_module}'
     if model_config.residual_module in ['ResidualSphericalSLERP', 'ResidualAdaptiveSphericalSLERP']:
         model_str += f" - SW{model_config.residual_module_kwargs['single_weight']}"
-    if 'num_params' in model_config:
-        model_str += f' - {format_large_number(model_config.num_params)}'
 
 
     group_name = f'{model_str}' #  - {train_str} - {data_str}
@@ -193,7 +191,7 @@ def create_model(model_config):
 
         print('-'*50)
         print('Llama config')
-        print(AttributeDict(llama_config))
+        print(AttributeDict(vars(llama_config)))
         print('-'*50)
 
         model = Llama(llama_config)
