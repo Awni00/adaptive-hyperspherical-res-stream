@@ -353,8 +353,8 @@ class nGPT(Module):
 
             if residual_module == 'ResidualSphericalLERP':
                 residual_module_kwargs = dict(
-                    default(alpha_attn_init_, alpha_init),
-                    default(alpha_attn_scale_, dim ** -0.5)
+                    init=default(alpha_attn_init_, alpha_init),
+                    scale=default(alpha_attn_scale_, dim ** -0.5)
                 )
             attn_with_residual = ResidualModule(
                 attn,
@@ -364,8 +364,8 @@ class nGPT(Module):
 
             if residual_module == 'ResidualSphericalLERP':
                 residual_module_kwargs = dict(
-                    default(alpha_ff_init_, alpha_init),
-                    default(alpha_ff_scale_, dim ** -0.5)
+                    init=default(alpha_ff_init_, alpha_init),
+                    scale=default(alpha_ff_scale_, dim ** -0.5)
                 )
 
             ff_with_residual = ResidualModule(
