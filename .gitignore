@@ -1,3 +1,22 @@
+# logs
+wandb/
+lightning_logs/
+
+# experiment config files
+**/configs/**
+
+# checkpoint files
+**/checkpoints/**
+**/artifacts/**
+
+# data files
+**/data/**
+
+# slurm stuff
+jobs/**/*.job
+jobs/**/*.out
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
