@@ -7,66 +7,8 @@ from torch.nn.utils.parametrize import register_parametrization
 from einops import rearrange, einsum
 from einops.layers.torch import Rearrange
 
+from .norm_utils import NormLinear, Scale, L2Norm
 from utils.utils import default, exists, cast_tuple
-
-# scale
-
-class Scale(Module):
-    """
-    latter part of section 2.5 in the paper
-    """
-    def __init__(
-        self,
-        dim,
-        init = 1.,
-        scale = 1.
-    ):
-        super().__init__()
-        self.scale = nn.Parameter(torch.ones(dim) * scale)
-        self.forward_scale = init / scale
-
-    def forward(self):
-        return self.scale * self.forward_scale
-
-# l2 nrom
-def l2norm(
-    t,
-    dim = -1,
-    norm_eps = 0.,
-    eps = None,
-    groups = 1
-):
-    if groups > 1:
-        t = t.chunk(groups, dim = dim)
-        t = torch.stack(t)
-
-    if norm_eps == 0.:
-        out = F.normalize(t, dim = dim, p = 2)
-    else:
-        eps = default(eps, 1e-5 if t.dtype == torch.float16 else 1e-10)
-        norm = t.norm(dim = dim, keepdim = True)
-        target_norm = norm.detach().clamp(min = 1. - norm_eps, max = 1. + norm_eps)
-        divisor = norm / target_norm
-        out = t / divisor.clamp(min = eps)
-
-    if groups > 1:
-        out = torch.cat([*out], dim = dim)
-
-    return out
-
-# for use with parametrize
-
-class L2Norm(Module):
-    def __init__(self, dim = -1, norm_eps = 0., groups = 1):
-        super().__init__()
-        self.dim = dim
-        self.norm_eps = norm_eps
-        self.groups = groups
-
-    def forward(self, t):
-        return l2norm(t, dim = self.dim, norm_eps = self.norm_eps, groups = self.groups)
-
-# residual slerp update with learned scale
 
 # This is the original implementation, and follows the nGPT paper
 class ResidualSphericalLERP(Module):
@@ -102,6 +44,49 @@ class ResidualSphericalLERP(Module):
 
         return out
 
+# An adaptive variant of ResidualSphericalLERP, where the scale parameter is a learned function of the update direction y.
+class ResidualAdaptiveSphericalLERP(Module):
+    def __init__(
+        self,
+        fn: Module,
+        dim: int,
+        groups = 1,
+        norm_eps = 0.
+    ):
+        super().__init__()
+        self.fn = fn
+        # self.branch_scale = Scale(dim, init, default(scale, dim ** -0.5))
+        self.branch_scale_map = NormLinear(
+            dim, dim, # TODO: can implement single_weight=False, True
+            norm_dim_in=True, # TODO: check
+            parametrize=True, # TODO: check
+            norm_eps=norm_eps, 
+            groups=groups)
+
+        self.l2norm = L2Norm(dim = -1, norm_eps = norm_eps, groups = groups)
+
+    def forward(self, x, **kwargs):
+        residual = x
+
+        out = self.fn(x, **kwargs)
+
+        tuple_output = isinstance(out, tuple)
+
+        if tuple_output:
+            out, *rest = out
+
+        out = self.l2norm(out)
+
+        branch_scale = self.branch_scale_map(out)
+
+        out = residual + branch_scale * (out - residual)
+        out = self.l2norm(out)
+        # out = self.l2norm(residual.lerp(out, branch_scale))
+
+        if tuple_output:
+            out = (out, *rest)
+
+        return out
 
 # TODO: consider whether we need a special intialization for the scale parameter like in ResidualSphericalLERP
 # currently, the scale parameter is initialized to 0, such that it comptues a balanced interpolation between the residual and the update
@@ -232,6 +217,7 @@ class ResidualSphericalSLERP(nn.Module):
 
         return out
 
+# TODO: try NormLinear map for the map
 class ResidualAdaptiveSphericalSLERP(nn.Module):
     """
     An adaptive variant of HypersphereSLERP, where the interpolation weight is a learned function of the update direction y.
@@ -262,7 +248,7 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
         Performs the spherical interpolation on the hypersphere between tensors x and y = self.fn(x).
     """
 
-    def __init__(self, fn, dim, n_spheres=1, single_weight=True, slerp_weight_init=0.0):
+    def __init__(self, fn, dim, n_spheres=1, single_weight=True, slerp_weight_map='NormLinear'):
         super().__init__()
 
         self.fn = fn
@@ -274,11 +260,22 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
         self.sphere_dim = dim // n_spheres
         assert dim % n_spheres == 0, 'Dimension must be divisible by n_spheres'
         self.single_weight = single_weight
-        self.slerp_weight_init = slerp_weight_init
+        self.slerp_weight_map = slerp_weight_map
 
         # if single_weight, then use a single scalar weight for all dimensions;
         # otherwise, use a separate weight for each dimension
-        self.slerp_weight_map = nn.Linear(dim, self.n_spheres) if single_weight else nn.Linear(dim, dim)
+        if slerp_weight_map == 'NormLinear':
+            if single_weight:
+                self.slerp_weight_map = NormLinear(dim, self.n_spheres, norm_dim_in=True, parametrize=True)
+            else:
+                NormLinear(dim, dim, norm_dim_in=True, parametrize=True)
+        elif slerp_weight_map == 'Linear':
+            if single_weight:
+                self.slerp_weight_map = nn.Linear(dim, self.n_spheres)
+            else:
+                self.slerp_weight_map = nn.Linear(dim, dim)
+        else:
+            raise ValueError('Invalid slerp_weight_map')
 
         # note: single_weight=True interpolates between two vectors on the unit-norm hypersphere (if n_sphere=1)
         # or factors the dimension into n_spheres and interpolates along each sphere independently (if n_spheres>1)
@@ -298,15 +295,19 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
             out, *rest = out
 
         # compute interpolation weights
+        # TODO: compute slerp_weight after normalization?
         # NOTE: here, we've chosen to compute the interpolation weights based on the output before normalization or factorization
         # TODO: it may be reasonable to compute the weight for the i-th sphere based on the normalized i-th sphere only
         # similarly, it may be beneficial to use NormLinear instead of Linear
-        slerp_weight = self.slerp_weight_map(out) # shape: [batch_size, ..., n_spheres]
+        # TODO: this can be optimized or revised (e.g., order of normaliation  vs computing slerp_weight, etc.)
+        if self.slerp_weight_map == 'NormLinear':
+            slerp_weight = self.slerp_weight_map(torch.nn.functional.normalize(out, p=2, dim=-1)) # shape: [batch_size, ..., n_spheres]
+        else:
+            slerp_weight = self.slerp_weight_map(out) # shape: [batch_size, ..., n_spheres]
 
         # factor into n_spheres and normalizes each sphere
         x = self.factor_and_normalize_spheres(x) # shape: [batch_size, ..., n_spheres, d_sphere]
         out = self.factor_and_normalize_spheres(out) # shape: [batch_size, ..., n_spheres, d_sphere]
-
 
         x = self.interpolate_factored_spheres(x, out, slerp_weight) # shape: [batch_size, ..., n_spheres, d_sphere]
 
