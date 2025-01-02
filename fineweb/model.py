@@ -123,7 +123,11 @@ def get_experiment_name(model_config, data_config, train_config):
     if model_config.model_type == 'nGPT':
         model_str += f' - {model_config.residual_module}'
     if model_config.residual_module in ['ResidualSphericalSLERP', 'ResidualAdaptiveSphericalSLERP']:
-        model_str += f" - SW{model_config.residual_module_kwargs['single_weight']}"
+        model_str += f" - SW-{model_config.residual_module_kwargs['single_weight']}"
+    if 'n_spheres' in model_config.get('residual_model_kwargs', {}):
+        model_str += f" - NS-{model_config.residual_module_kwargs['n_spheres']}"
+    if 'slerp_weight_map' in model_config.get('residual_module_kwargs', {}):
+        model_str += f" - SWM-{model_config.residual_module_kwargs['slerp_weight_map']}"
 
 
     group_name = f'{model_str}' #  - {train_str} - {data_str}
