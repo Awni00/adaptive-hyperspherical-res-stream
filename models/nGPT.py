@@ -14,7 +14,8 @@ from einops import rearrange, einsum
 from einops.layers.torch import Rearrange
 
 from .rotary_embedding_torch import RotaryEmbedding
-from .residual_stream import Scale, L2Norm, l2norm, ResidualSphericalLERP, ResidualSphericalSLERP, ResidualAdaptiveSphericalSLERP
+from .residual_stream import ResidualSphericalLERP, ResidualAdaptiveSphericalLERP, ResidualSphericalSLERP, ResidualAdaptiveSphericalSLERP
+from .norm_utils import NormLinear, Scale, L2Norm, l2norm
 from utils.utils import default, exists, cast_tuple
 
 # constants
@@ -27,50 +28,6 @@ SDP_BACKEND_MAP = dict(
     enable_math = SDPBackend.MATH,
     enable_cudnn = SDPBackend.CUDNN_ATTENTION
 )
-
-
-class NormLinear(Module):
-    def __init__(
-        self,
-        dim,
-        dim_out,
-        norm_dim_in = True,
-        parametrize = True,
-        norm_eps = 0.,
-        groups = 1
-    ):
-        super().__init__()
-        self.linear = nn.Linear(dim, dim_out, bias = False)
-
-        self.scale = groups ** -1
-        self.parametrize = parametrize
-        self.l2norm = L2Norm(dim = -1 if norm_dim_in else 0, norm_eps = norm_eps, groups = groups)
-
-        if parametrize:
-            register_parametrization(
-                self.linear,
-                'weight',
-                self.l2norm
-            )
-
-        self.norm_weights_()
-
-    @torch.no_grad()
-    def norm_weights_(self):
-        if self.parametrize:
-            normed = self.weight
-            original = self.linear.parametrizations.weight.original
-
-            original.copy_(normed)
-        else:
-            self.weight.copy_(self.l2norm(self.weight))
-
-    @property
-    def weight(self):
-        return self.linear.weight
-
-    def forward(self, x):
-        return self.linear(x) * self.scale
 
 # attention
 
@@ -232,6 +189,10 @@ class FeedForward(Module):
 # classes
 
 # NOTE / FIXME: nGPT is much slower than llama... Why?
+# NOTE: it may be due to the NormLinear layer; TODO: check if this is the case (i.e., %timeit for NormLinear vs Linear; both forward pass and backward pass)
+# if this is the issue, is there faster implementation?
+# TODO: also, unrelated: check whether randomly initialized Transformer model's embeddings grow in norm with depth
+# TODO: check effect of learning rate schedule; try training without warmup for nGPT-derivatives (i.e., is warmup unnecessary?)
 
 class nGPT(Module):
     def __init__(
@@ -242,7 +203,7 @@ class nGPT(Module):
         depth,
         dim_head = 64,
         heads = 8,
-        residual_module = 'ResidualSphericalLERP', # SphericalLERP or SphericalSLERP or AdaptiveSphericalSLERP
+        residual_module = 'ResidualSphericalLERP', # SphericalLERP or ResidualAdaptiveSphericalLERP or SphericalSLERP or AdaptiveSphericalSLERP
         residual_module_kwargs = None,
         attn_norm_qk = True,  # they say the query/key normalization is optional
         ff_expand_factor = 4.,
@@ -306,6 +267,7 @@ class nGPT(Module):
 
         residual_module_dict = dict(
             ResidualSphericalLERP=ResidualSphericalLERP,
+            ResidualAdaptiveSphericalLERP=ResidualAdaptiveSphericalLERP,
             ResidualSphericalSLERP=ResidualSphericalSLERP,
             ResidualAdaptiveSphericalSLERP=ResidualAdaptiveSphericalSLERP)
 
