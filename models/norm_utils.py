@@ -75,6 +75,36 @@ class NormLinear(Module):
         norm_eps = 0.,
         groups = 1
     ):
+        """
+        An L2-Normalized Linear layer.
+
+        Linearly maps from dim to dim_out, such that weights are L2-unit-norm across dim dimension.
+        If input is also L2-normalized, the matrix-vector multiplication corresponds to cosine similarities,
+        capturing only the relative angle between vectors and not magnitudes.
+
+        Parameters
+        ----------
+        dim : int
+            dimension of input.
+        dim_out : int
+            dimension of output.
+        norm_dim_in : bool, optional
+            whether to normalize across `dim` dimension or `dim_out` dimension.
+            Default is True, corresponding to normalizing across input dimension.
+        parametrize : True, optional
+            Whether to register parameterization of weights tensor in linear layer as.
+            If normed parameterization is registered, each time linear.weight is accessed, it will be normalized
+            and gradients of the backward pass will differentiate through the normalization.
+            If True, weights will be initialized as normalized and will continue to be normalized throughout training.
+            If False, weights will be initialized as normalized but will *not* be constrained to be normalized after
+            being updated through training. By default True.
+        norm_eps : float, optional
+            epsilon used in L2Norm, by default 0.
+        groups : int, optional
+            Optionally, chunk/group the `dim` input dimensions and normalize weights across each group.
+            By default 1, corresponding to no grouping.
+        """
+
         super().__init__()
         self.linear = nn.Linear(dim, dim_out, bias = False)
 
