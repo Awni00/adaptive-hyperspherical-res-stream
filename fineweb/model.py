@@ -175,7 +175,6 @@ def create_model(model_config):
             attn_norm_qk=model_config.get('attn_norm_qk', True), # whether to normalize q and k after {q,k} = x W_{q,k}
             ff_expand_factor=4, # fixed
             ce_ignore_index=-1,
-            manual_norm_weights=model_config.get('manual_norm_weights', False), # corresponds to paramtrize argument in NormLinear layer
             tied_embedding=False, # llama implementation doesn't have tied embeddings, so let this be false for now
             num_hyperspheres=model_config.get('num_hyperspheres', 1),
             causal=True,
