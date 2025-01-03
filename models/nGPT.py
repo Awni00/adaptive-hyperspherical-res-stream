@@ -208,7 +208,7 @@ class nGPT(Module):
         attn_norm_qk = True,  # they say the query/key normalization is optional
         ff_expand_factor = 4.,
         ce_ignore_index = -1,
-        manual_norm_weights = False,
+        manual_norm_weights = False, # constrain to unit norm through projection after each optimization step, rather than through parameterization (appears to be faster)
         tied_embedding = False,
         num_hyperspheres = 1,
         causal = True,
@@ -273,6 +273,8 @@ class nGPT(Module):
 
         ResidualModule = residual_module_dict[residual_module]
         residual_module_kwargs = residual_module_kwargs or {}
+        if residual_module in ['ResidualAdaptiveSphericalLERP', 'ResidualAdaptiveSphericalSLERP']:
+            residual_module_kwargs['parametrize'] = not manual_norm_weights
 
         for (
             alpha_attn_init_,
