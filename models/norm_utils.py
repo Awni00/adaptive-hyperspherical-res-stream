@@ -112,6 +112,12 @@ class NormLinear(Module):
         self.parametrize = parametrize
         self.l2norm = L2Norm(dim = -1 if norm_dim_in else 0, norm_eps = norm_eps, groups = groups)
 
+        # initialize linear weights as isotropic *gaussian* (not uniform) and normalize
+        # after normalization, this corresponds to drawing weights uniformly from the hypersphere
+        nn.init.normal_(self.linear.weight)
+        # note: by default, pytorch initializes Linear with nn.init.xavier_uniform_ which
+        # would not correspond to drawing weights uniformly from hypersphere after normalization. (e.g., would have larger mass on corners of hypercube)
+
         if parametrize:
             register_parametrization(
                 self.linear,
