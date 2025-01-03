@@ -90,6 +90,12 @@ class LitTransformerLM(pl.LightningModule):
         else:
             # use no scheduler
             scheduler = None
+
+        # if using manual_norm_weights = True (i.e., parametrize=False in NormLinear layer), parameterization does not enforce norm constraint
+        # instead, we manually normalize the weights after each optimizer step
+        if self.model_config.get('manual_norm_weights', False):
+            self.model.register_step_post_hook(optimizer)
+
         if scheduler is not None:
             return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
         else:
@@ -128,6 +134,10 @@ def get_experiment_name(model_config, data_config, train_config):
         model_str += f" - NS-{model_config.residual_module_kwargs['n_spheres']}"
     if 'slerp_weight_map' in model_config.get('residual_module_kwargs', {}):
         model_str += f" - SWM-{model_config.residual_module_kwargs['slerp_weight_map']}"
+    if 'interpolation_weight_activation' in model_config.get('residual_module_kwargs', {}):
+        model_str += f" - IWAct-{model_config.residual_module_kwargs['interpolation_weight_activation']}"
+    if "manual_norm_weights" in model_config:
+        model_str += f" - MNW-{model_config.manual_norm_weights}"
 
 
     group_name = f'{model_str}' #  - {train_str} - {data_str}
@@ -158,6 +168,9 @@ def create_model(model_config):
             # residual module
             residual_module=model_config.get('residual_module', 'SphericalLERP'),
             residual_module_kwargs=model_config.get('residual_module_kwargs', None),
+
+            # parameterization of NormLinear
+            manual_norm_weights=model_config.get('manual_norm_weights', False),
 
             attn_norm_qk=model_config.get('attn_norm_qk', True), # whether to normalize q and k after {q,k} = x W_{q,k}
             ff_expand_factor=4, # fixed
