@@ -176,9 +176,9 @@ class Attention(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        start_pos: int,
-        freqs_cis: torch.Tensor,
-        mask: Optional[torch.Tensor],
+        start_pos: int = 0,
+        freqs_cis: torch.Tensor = None,
+        mask: Optional[torch.Tensor] = None,
     ):
         bsz, seqlen, _ = x.shape
         # calculate query, key, value and split out heads
@@ -187,8 +187,9 @@ class Attention(nn.Module):
         xk = xk.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
         xv = xv.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
         # rotate query, keys (RoPE)
-        xq = apply_rotary_emb(xq, freqs_cis)
-        xk = apply_rotary_emb(xk, freqs_cis)
+        if freqs_cis is not None:
+            xq = apply_rotary_emb(xq, freqs_cis)
+            xk = apply_rotary_emb(xk, freqs_cis)
         # KV cache update
         if self.cache is not None:
             # update the KV cache with current KV and get all the previous KVs
