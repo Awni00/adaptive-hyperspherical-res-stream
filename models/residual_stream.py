@@ -51,15 +51,16 @@ class ResidualAdaptiveSphericalLERP(Module):
         fn: Module,
         dim: int,
         groups = 1,
-        norm_eps = 0.
+        norm_eps = 0.,
+        parametrize = True
     ):
         super().__init__()
         self.fn = fn
         # self.branch_scale = Scale(dim, init, default(scale, dim ** -0.5))
         self.branch_scale_map = NormLinear(
             dim, dim, # TODO: can implement single_weight=False, True
-            norm_dim_in=True, # TODO: check
-            parametrize=True, # TODO: check
+            norm_dim_in=True,
+            parametrize=parametrize,
             norm_eps=norm_eps, 
             groups=groups)
 
@@ -120,7 +121,7 @@ class ResidualSphericalSLERP(nn.Module):
         Performs the spherical interpolation on the hypersphere between tensors x and y.
     """
 
-    def __init__(self, fn, dim, n_spheres=1, single_weight=True, slerp_weight_init=0.0):
+    def __init__(self, fn, dim, n_spheres=1, single_weight=True, slerp_weight_init=0.0, interpolation_weight_activation='sigmoid'):
         super().__init__()
 
         self.fn = fn
@@ -139,6 +140,8 @@ class ResidualSphericalSLERP(nn.Module):
         self.slerp_weight = nn.Parameter(
             self.slerp_weight_init*torch.ones(self.n_spheres) if single_weight else self.slerp_weight_init*torch.ones(self.dim),
             requires_grad=True)
+
+        self.slerp_weight_activation = get_interpolation_weight_activation(interpolation_weight_activation)
 
         # note: single_weight=True interpolates between two vectors on the unit-norm hypersphere (if n_sphere=1)
         # or factors the dimension into n_spheres and interpolates along each sphere independently (if n_spheres>1)
@@ -203,7 +206,7 @@ class ResidualSphericalSLERP(nn.Module):
         theta = torch.acos(cos_theta) # shape: [batch_size, ..., n_spheres, 1]
         sin_theta = torch.sin(theta) # shape: [batch_size, ..., n_spheres, 1]
 
-        alpha = slerp_weights.sigmoid() # shape: [n_spheres] or [dim]
+        alpha = self.slerp_weight_activation(slerp_weights) # shape: [batch_size, ..., n_spheres] or [batch_size, ..., dim]
         if self.single_weight:
             alpha = alpha.unsqueeze(-1) # shape: [n_spheres, 1]
         else:
@@ -217,7 +220,6 @@ class ResidualSphericalSLERP(nn.Module):
 
         return out
 
-# TODO: try NormLinear map for the map
 class ResidualAdaptiveSphericalSLERP(nn.Module):
     """
     An adaptive variant of HypersphereSLERP, where the interpolation weight is a learned function of the update direction y.
@@ -248,7 +250,7 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
         Performs the spherical interpolation on the hypersphere between tensors x and y = self.fn(x).
     """
 
-    def __init__(self, fn, dim, n_spheres=1, single_weight=True, slerp_weight_map='NormLinear'):
+    def __init__(self, fn, dim, n_spheres=1, single_weight=True, slerp_weight_map='NormLinear', interpolation_weight_activation='sigmoid', parametrize=True):
         super().__init__()
 
         self.fn = fn
@@ -266,9 +268,9 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
         # otherwise, use a separate weight for each dimension
         if slerp_weight_map == 'NormLinear':
             if single_weight:
-                self.slerp_weight_map = NormLinear(dim, self.n_spheres, norm_dim_in=True, parametrize=True)
+                self.slerp_weight_map = NormLinear(dim, self.n_spheres, norm_dim_in=True, parametrize=parametrize)
             else:
-                NormLinear(dim, dim, norm_dim_in=True, parametrize=True)
+                self.slerp_weight_map = NormLinear(dim, dim, norm_dim_in=True, parametrize=parametrize)
         elif slerp_weight_map == 'Linear':
             if single_weight:
                 self.slerp_weight_map = nn.Linear(dim, self.n_spheres)
@@ -276,6 +278,8 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
                 self.slerp_weight_map = nn.Linear(dim, dim)
         else:
             raise ValueError('Invalid slerp_weight_map')
+
+        self.slerp_weight_activation = get_interpolation_weight_activation(interpolation_weight_activation)
 
         # note: single_weight=True interpolates between two vectors on the unit-norm hypersphere (if n_sphere=1)
         # or factors the dimension into n_spheres and interpolates along each sphere independently (if n_spheres>1)
@@ -295,15 +299,12 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
             out, *rest = out
 
         # compute interpolation weights
-        # TODO: compute slerp_weight after normalization?
-        # NOTE: here, we've chosen to compute the interpolation weights based on the output before normalization or factorization
-        # TODO: it may be reasonable to compute the weight for the i-th sphere based on the normalized i-th sphere only
-        # similarly, it may be beneficial to use NormLinear instead of Linear
-        # TODO: this can be optimized or revised (e.g., order of normaliation  vs computing slerp_weight, etc.)
         if self.slerp_weight_map == 'NormLinear':
             slerp_weight = self.slerp_weight_map(torch.nn.functional.normalize(out, p=2, dim=-1)) # shape: [batch_size, ..., n_spheres]
         else:
+            # TODO: compute slerp_weight after normalization?
             slerp_weight = self.slerp_weight_map(out) # shape: [batch_size, ..., n_spheres]
+        # TODO: it may be reasonable to compute the weight for the i-th sphere based on the normalized i-th sphere only
 
         # factor into n_spheres and normalizes each sphere
         x = self.factor_and_normalize_spheres(x) # shape: [batch_size, ..., n_spheres, d_sphere]
@@ -351,7 +352,7 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
         theta = torch.acos(cos_theta) # shape: [batch_size, ..., n_spheres, 1]
         sin_theta = torch.sin(theta) # shape: [batch_size, ..., n_spheres, 1]
 
-        alpha = slerp_weights.sigmoid() # shape: [batch_size, ..., n_spheres] or [batch_size, ..., dim]
+        alpha = self.slerp_weight_activation(slerp_weights) # shape: [batch_size, ..., n_spheres] or [batch_size, ..., dim]
         if self.single_weight:
             alpha = alpha.unsqueeze(-1) # shape: [batch_size, ..., n_spheres, 1]
         else:
@@ -364,3 +365,15 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
         # out.shape: [batch_size, ..., n_spheres, d_sphere] s.t. norm(out, dim=-1) = 1 (if single_weight=True)
 
         return out
+
+def get_interpolation_weight_activation(activation):
+    activation_map = dict(
+        sigmoid=nn.Sigmoid(),
+        abs=torch.abs,
+        linear=torch.nn.Identity(),
+        relu=nn.ReLU(),
+        tanh=nn.Tanh(),
+        softplus=nn.Softplus(),
+        softsign=nn.Softsign()
+        )
+    return activation_map[activation]
