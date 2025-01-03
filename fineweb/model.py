@@ -126,21 +126,24 @@ def get_experiment_name(model_config, data_config, train_config):
     # Group: Model Config
     # Name: Seed + Date-Time
     model_str = f'{model_config.model_type} - L{model_config.n_layers}H{model_config.n_heads}D{model_config.d_model}'
+
     if model_config.model_type == 'nGPT':
         model_str += f' - {model_config.residual_module}'
-    if model_config.residual_module in ['ResidualSphericalSLERP', 'ResidualAdaptiveSphericalSLERP']:
-        model_str += f" - SW-{model_config.residual_module_kwargs['single_weight']}"
-    if 'n_spheres' in model_config.get('residual_model_kwargs', {}):
-        model_str += f" - NS-{model_config.residual_module_kwargs['n_spheres']}"
-    if 'slerp_weight_map' in model_config.get('residual_module_kwargs', {}):
-        model_str += f" - SWM-{model_config.residual_module_kwargs['slerp_weight_map']}"
-    if 'interpolation_weight_activation' in model_config.get('residual_module_kwargs', {}):
-        model_str += f" - IWAct-{model_config.residual_module_kwargs['interpolation_weight_activation']}"
-    if "manual_norm_weights" in model_config:
-        model_str += f" - MNW-{model_config.manual_norm_weights}"
 
+        if model_config.residual_module in ['ResidualSphericalSLERP', 'ResidualAdaptiveSphericalSLERP']:
+            model_str += f" - SW-{model_config.residual_module_kwargs['single_weight']}"
+        if 'n_spheres' in model_config.get('residual_model_kwargs', {}):
+            model_str += f" - NS-{model_config.residual_module_kwargs['n_spheres']}"
+        if 'slerp_weight_map' in model_config.get('residual_module_kwargs', {}):
+            model_str += f" - SWM-{model_config.residual_module_kwargs['slerp_weight_map']}"
+        if 'interpolation_weight_activation' in model_config.get('residual_module_kwargs', {}):
+            model_str += f" - IWAct-{model_config.residual_module_kwargs['interpolation_weight_activation']}"
+        if "manual_norm_weights" in model_config:
+            model_str += f" - MNW-{model_config.manual_norm_weights}"
 
-    group_name = f'{model_str}' #  - {train_str} - {data_str}
+    data_str = f'{data_config.sequence_length}'
+
+    group_name = f'{model_str} - {data_str}' #  - {train_str} - {data_str}
 
     run_name = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
     if getattr(train_config, 'seed', None) is not None:
