@@ -353,6 +353,16 @@ class nGPT(Module):
             module.norm_weights_()
 
     def register_step_post_hook(self, optimizer):
+        """
+        This function registers a hook to an optimizer that will normalize the weights of the model after each step.
+
+        This should be used if manual_norm_weights = True or equivalently if paramtrize = False in NormLinear.
+
+        This represents two possible ways to maintain normalized weights in the model:
+        1) using the parametrize argument in NormLinear, to use a unit-norm parameterization, and differentiate through the parameterization
+        2) using a post-step hook to normalize the weights after each optimization step
+        """
+
         assert hasattr(optimizer, 'register_step_post_hook')
 
         def hook(*_):
