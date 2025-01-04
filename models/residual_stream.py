@@ -11,7 +11,7 @@ from .norm_utils import NormLinear, Scale, L2Norm
 from utils.utils import default, exists, cast_tuple
 
 # This is the original implementation, and follows the nGPT paper
-class ResidualSphericalLERP(Module):
+class ResidualSphericalLERPBase(Module):
     def __init__(
         self,
         fn: Module,
@@ -44,7 +44,10 @@ class ResidualSphericalLERP(Module):
 
         return out
 
-# An adaptive variant of ResidualSphericalLERP, where the scale parameter is a learned function of the update direction y.
+# TODO: add unit tests...
+# TODO: adjust implementation to take y = fn(x) as input, and compute the update direction as y - x, rather than take module as input in intializer (similar to other repo)
+
+# An adaptive variant of ResidualSphericalLERPBase, where the scale parameter is a learned function of the update direction y.
 class ResidualAdaptiveSphericalLERP(Module):
     def __init__(
         self,
@@ -52,7 +55,8 @@ class ResidualAdaptiveSphericalLERP(Module):
         dim: int,
         groups = 1,
         norm_eps = 0.,
-        parametrize = True
+        parametrize = True,
+        interpolation_weight_activation = 'linear'
     ):
         super().__init__()
         self.fn = fn
@@ -61,8 +65,10 @@ class ResidualAdaptiveSphericalLERP(Module):
             dim, dim, # TODO: can implement single_weight=False, True
             norm_dim_in=True,
             parametrize=parametrize,
-            norm_eps=norm_eps, 
+            norm_eps=norm_eps,
             groups=groups)
+
+        self.lerp_weight_activation = get_interpolation_weight_activation(interpolation_weight_activation)
 
         self.l2norm = L2Norm(dim = -1, norm_eps = norm_eps, groups = groups)
 
@@ -79,6 +85,7 @@ class ResidualAdaptiveSphericalLERP(Module):
         out = self.l2norm(out)
 
         branch_scale = self.branch_scale_map(out)
+        branch_scale = self.lerp_weight_activation(branch_scale)
 
         out = residual + branch_scale * (out - residual)
         out = self.l2norm(out)
@@ -89,7 +96,7 @@ class ResidualAdaptiveSphericalLERP(Module):
 
         return out
 
-# TODO: consider whether we need a special intialization for the scale parameter like in ResidualSphericalLERP
+# TODO: consider whether we need a special intialization for the scale parameter like in ResidualSphericalLERPBase
 # currently, the scale parameter is initialized to 0, such that it comptues a balanced interpolation between the residual and the update
 class ResidualSphericalSLERP(nn.Module):
     """

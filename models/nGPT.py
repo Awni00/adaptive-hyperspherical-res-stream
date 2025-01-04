@@ -14,7 +14,7 @@ from einops import rearrange, einsum
 from einops.layers.torch import Rearrange
 
 from .rotary_embedding_torch import RotaryEmbedding
-from .residual_stream import ResidualSphericalLERP, ResidualAdaptiveSphericalLERP, ResidualSphericalSLERP, ResidualAdaptiveSphericalSLERP
+from .residual_stream import ResidualSphericalLERPBaseBase, ResidualAdaptiveSphericalLERP, ResidualSphericalSLERP, ResidualAdaptiveSphericalSLERP
 from .norm_utils import NormLinear, Scale, L2Norm, l2norm
 from utils.utils import default, exists, cast_tuple
 
@@ -203,7 +203,7 @@ class nGPT(Module):
         depth,
         dim_head = 64,
         heads = 8,
-        residual_module = 'ResidualSphericalLERP', # SphericalLERP or ResidualAdaptiveSphericalLERP or SphericalSLERP or AdaptiveSphericalSLERP
+        residual_module = 'ResidualSphericalLERPBase', # SphericalLERP or ResidualAdaptiveSphericalLERP or SphericalSLERP or AdaptiveSphericalSLERP
         residual_module_kwargs = None,
         attn_norm_qk = True,  # they say the query/key normalization is optional
         ff_expand_factor = 4.,
@@ -266,7 +266,7 @@ class nGPT(Module):
         scale_hparams = tuple(cast_tuple(hparam, depth) for hparam in scale_hparams)
 
         residual_module_dict = dict(
-            ResidualSphericalLERP=ResidualSphericalLERP,
+            ResidualSphericalLERPBase=ResidualSphericalLERPBaseBase,
             ResidualAdaptiveSphericalLERP=ResidualAdaptiveSphericalLERP,
             ResidualSphericalSLERP=ResidualSphericalSLERP,
             ResidualAdaptiveSphericalSLERP=ResidualAdaptiveSphericalSLERP)
@@ -315,7 +315,7 @@ class nGPT(Module):
                 num_hyperspheres = num_hyperspheres
             )
 
-            if residual_module == 'ResidualSphericalLERP':
+            if residual_module == 'ResidualSphericalLERPBase':
                 residual_module_kwargs = dict(
                     init=default(alpha_attn_init_, alpha_init),
                     scale=default(alpha_attn_scale_, dim ** -0.5)
@@ -326,7 +326,7 @@ class nGPT(Module):
                 **residual_module_kwargs
             )
 
-            if residual_module == 'ResidualSphericalLERP':
+            if residual_module == 'ResidualSphericalLERPBase':
                 residual_module_kwargs = dict(
                     init=default(alpha_ff_init_, alpha_init),
                     scale=default(alpha_ff_scale_, dim ** -0.5)
