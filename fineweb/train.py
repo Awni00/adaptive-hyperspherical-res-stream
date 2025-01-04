@@ -18,7 +18,7 @@ from fineweb_data import FinewebDataset
 import os, sys; sys.path.insert(0, os.path.abspath('..')) # add project root dir to path
 from utils.utils import AttributeDict, print_gpu_info, format_large_number
 
-from model import LitTransformerLM, get_experiment_name
+from model import LitTransformerLM, get_experiment_name, parse_model_config
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config_dir', type=str)
@@ -55,6 +55,8 @@ for arg_str in unknown_args:
             print(f"Updated {prefix}{key} to {value}")
 
 # process defaults
+model_config = parse_model_config(model_config) # removes args that are not applicable to model type
+
 train_config.val_check_interval = getattr(train_config, 'val_check_interval', 250) # interval (in microbatches) to check validation
 train_config.limit_val_batches = getattr(train_config, 'limit_val_batches', 20) # number of microbatches to use for validationtrain_config.
 train_config.log_every_n_steps = getattr(train_config, 'log_every_n_steps', None)
@@ -67,6 +69,20 @@ train_config.limit_train_batches = getattr(train_config, 'limit_train_batches', 
 # setup
 tokenizer = tiktoken.get_encoding('gpt2')
 model_config.vocab_size = tokenizer.n_vocab
+
+# initialize wandb run
+# Group: Data Config - Model Config / Run name: Seed + Date-Time
+group_name, run_name = get_experiment_name(model_config, data_config, train_config)
+
+train_config.experiment_run_name = run_name
+train_config.experiment_group = group_name
+
+
+if not args.debug:
+    wandb_experiment_run = wandb.init(
+        entity=train_config.wandb_config.wandb_entity, project=train_config.wandb_config.wandb_project,
+        name=train_config.experiment_run_name, group=train_config.experiment_group)
+
 
 # print configs
 print('='*80)
@@ -158,17 +174,8 @@ print('='*80)
 
 experiment_config = dict(train_config=train_config, model_config=model_config, data_config=data_config, model_summary=model_summary_dict)
 
-# initialize wandb run
-# Group: Data Config - Model Config / Run name: Seed + Date-Time
-group_name, run_name = get_experiment_name(model_config, data_config, train_config)
-
-train_config.experiment_run_name = run_name
-train_config.experiment_group = group_name
-
 if not args.debug:
-    wandb_experiment_run = wandb.init(
-        entity=train_config.wandb_config.wandb_entity, project=train_config.wandb_config.wandb_project,
-        name=train_config.experiment_run_name, group=train_config.experiment_group, config=experiment_config)
+    wandb_experiment_run.config.update(experiment_config)
 
 # configure callbacks
 callbacks = []
