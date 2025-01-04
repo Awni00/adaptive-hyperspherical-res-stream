@@ -14,7 +14,7 @@ from einops import rearrange, einsum
 from einops.layers.torch import Rearrange
 
 from .rotary_embedding_torch import RotaryEmbedding
-from .residual_stream import ResidualSphericalLERPBaseBase, ResidualAdaptiveSphericalLERP, ResidualSphericalSLERP, ResidualAdaptiveSphericalSLERP
+from .residual_stream import ResidualSphericalLERPBase, ResidualAdaptiveSphericalLERP, ResidualSphericalSLERP, ResidualAdaptiveSphericalSLERP
 from .norm_utils import NormLinear, Scale, L2Norm, l2norm
 from utils.utils import default, exists, cast_tuple
 
@@ -266,7 +266,7 @@ class nGPT(Module):
         scale_hparams = tuple(cast_tuple(hparam, depth) for hparam in scale_hparams)
 
         residual_module_dict = dict(
-            ResidualSphericalLERPBase=ResidualSphericalLERPBaseBase,
+            ResidualSphericalLERPBase=ResidualSphericalLERPBase,
             ResidualAdaptiveSphericalLERP=ResidualAdaptiveSphericalLERP,
             ResidualSphericalSLERP=ResidualSphericalSLERP,
             ResidualAdaptiveSphericalSLERP=ResidualAdaptiveSphericalSLERP)
