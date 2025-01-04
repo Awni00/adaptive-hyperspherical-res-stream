@@ -158,6 +158,23 @@ def get_experiment_name(model_config, data_config, train_config):
 
     return group_name, run_name
 
+def parse_model_config(model_config):
+    # remove non-applicable keys
+    if model_config['model_type'] == 'llama':
+        model_config.pop('residual_module', None)
+        model_config.pop('residual_module_kwargs', None)
+        model_config.pop('manual_norm_weights', None)
+        model_config.pop('attn_norm_qk', None)
+        model_config.pop('num_hyperspheres', None)
+        model_config.pop('add_value_residual', None)
+
+    if model_config['model_type'] == 'nGPT':
+        if model_config['residual_module'] == 'SphericalLERP':
+            model_config.pop('residual_module_kwargs', None)
+
+    return model_config
+
+
 def create_model(model_config):
     if model_config['model_type'] == 'nGPT':
         nGPT_config = dict(
