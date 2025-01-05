@@ -184,6 +184,7 @@ def create_model(model_config):
             depth=model_config['n_layers'],
             dim_head=model_config['d_model'] // model_config['n_heads'],
             heads=model_config['n_heads'],
+            tied_embedding=model_config['tied_embedding'],
 
             # residual module
             residual_module=model_config.get('residual_module', 'SphericalLERP'),
@@ -195,7 +196,6 @@ def create_model(model_config):
             attn_norm_qk=model_config.get('attn_norm_qk', True), # whether to normalize q and k after {q,k} = x W_{q,k}
             ff_expand_factor=4, # fixed
             ce_ignore_index=-1,
-            tied_embedding=False, # llama implementation doesn't have tied embeddings, so let this be false for now
             num_hyperspheres=model_config.get('num_hyperspheres', 1),
             causal=True,
             add_value_residual=model_config.get('add_value_residual', False), # this is based on https://arxiv.org/abs/2410.17897v1
@@ -213,6 +213,8 @@ def create_model(model_config):
             dim=model_config['d_model'],
             n_layers = model_config['n_layers'],
             n_heads = model_config['n_heads'],
+            tied_embedding=model_config['tied_embedding'],
+
             n_kv_heads = None,
             vocab_size = model_config['vocab_size'],
             multiple_of = 256,  # make SwiGLU hidden layer size multiple of large power of 2
