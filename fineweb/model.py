@@ -3,8 +3,8 @@ import pytorch_lightning as pl
 import lightning.pytorch.utilities
 from datetime import datetime
 
-from models.nanoLlama31 import Transformer as Llama
-from models.nanoLlama31 import ModelArgs as LlamaArgs
+from models.llama import Transformer as Llama
+from models.llama import ModelArgs as LlamaArgs
 from models.nGPT import nGPT
 from utils.utils import get_cosine_schedule_with_warmup, format_large_number, AttributeDict
 
