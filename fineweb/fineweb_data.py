@@ -3,6 +3,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from tqdm import tqdm
 import os
+import json
 
 import sys, os; sys.path.append(os.path.dirname(os.path.realpath(__file__)) + "/..")
 from utils.utils import format_large_number
@@ -27,30 +28,29 @@ class FinewebDataset(Dataset):
 
         # get the shard filenames
         shard_paths = os.listdir(data_root)
-        shard_paths = [s for s in shard_paths if split in s]
+        shard_paths = [s for s in shard_paths if split in s and s.endswith('.npy')]
         shard_paths = sorted(shard_paths)
         shard_paths = [os.path.join(data_root, s) for s in shard_paths]
 
         self.shard_paths = shard_paths
 
-        self.shard_index_start = []  # Stores the offsets of each shard's data in the concatenated dataset
-        self.shard_lengths = [] # number of sequences in each shard
-        self.num_sequences = 0
-
-        shard_iter = tqdm(self.shard_paths, desc='Processing Shards...')
-        for shard_path in shard_iter:
-            shard_n_sequences = len(self.reshape_shard(
-                self.load_function(shard_path),
-                sequence_length=self.sequence_length+1))
-
-            self.shard_lengths.append(shard_n_sequences)
-
-            # start index for shard is the total number of sequences so far
-            self.shard_index_start.append(self.num_sequences)
-
-            self.num_sequences += shard_n_sequences
-
-            shard_iter.set_postfix(num_sequences=self.num_sequences, num_tokens=self.num_sequences * (self.sequence_length + 1))
+        data_spec_path = os.path.join(data_root, f'data_spec_{self.split}.json')
+        if os.path.exists(data_spec_path):
+            with open(data_spec_path, 'r') as f:
+                data_specs = json.load(f)
+                if not all (a == b for a, b in zip(data_specs['shard_paths'], self.shard_paths)):
+                    error_message = (
+                        'Shard paths do not match the saved data specs.\n\n'
+                        f'Saved shard paths: {data_specs["shard_paths"]}\n\n'
+                        f'Current shard paths: {shard_paths}'
+                    )
+                    raise ValueError(error_message)
+                print('Loading data specs from file...')
+                self.shard_index_start = data_specs['shard_index_start']
+                self.shard_lengths = data_specs['shard_lengths']
+                self.num_sequences = data_specs['num_sequences']
+        else:
+            self.shard_index_start, self.shard_lengths, self.num_sequences = self.process_shards(shard_paths, save_path=data_spec_path)
 
         self.num_tokens = self.num_sequences * (self.sequence_length + 1)
         print('# of Tokens:', format_large_number(self.num_tokens))
@@ -59,6 +59,37 @@ class FinewebDataset(Dataset):
 
         self.current_shard_index = None
         self.current_shard_data = None
+
+    def process_shards(self, shard_paths, save_path=None):
+        print('Parsing data & generating data spec')
+
+        shard_index_start = []
+        shard_lengths = []
+        num_sequences = 0
+
+        shard_iter = tqdm(shard_paths, desc='Processing Shards...')
+        for shard_path in shard_iter:
+            shard_n_sequences = len(self.reshape_shard(
+                self.load_function(shard_path),
+                sequence_length=self.sequence_length+1))
+
+            shard_lengths.append(shard_n_sequences)
+
+            # start index for shard is the total number of sequences so far
+            shard_index_start.append(num_sequences)
+
+            num_sequences += shard_n_sequences
+
+            shard_iter.set_postfix(num_sequences=num_sequences, num_tokens=num_sequences * (self.sequence_length + 1))
+
+        if save_path:
+            data_specs = dict(shard_paths=shard_paths, shard_index_start=shard_index_start, shard_lengths=shard_lengths, num_sequences=num_sequences)
+            with open(save_path, 'w') as f:
+                json.dump(data_specs, f, indent='\t')
+            print('Data specs saved to', save_path)
+
+        return shard_index_start, shard_lengths, num_sequences
+
 
     def reshape_shard(self, shard, sequence_length):
         """reshapes shard from (n_tokens,) to (n_sequences, sequence_length), discarding any remaining tokens"""
