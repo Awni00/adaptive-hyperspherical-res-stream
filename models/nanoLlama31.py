@@ -39,6 +39,7 @@ class ModelArgs:
     n_heads: int = 32
     n_kv_heads: Optional[int] = None
     vocab_size: int = -1
+    tied_embedding: bool = True
     multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
     ffn_dim_multiplier: Optional[float] = None
     norm_eps: float = 1e-5
@@ -275,6 +276,9 @@ class Transformer(nn.Module):
         )
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
         self.output = nn.Linear(params.dim, params.vocab_size, bias=False)
+
+        if params.tied_embedding:
+            self.output.weight = self.tok_embeddings.weight
 
         self.freqs_cis = precompute_freqs_cis(
             params.dim // params.n_heads,
