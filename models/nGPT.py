@@ -1,4 +1,4 @@
-# Source: https://github.com/lucidrains/nGPT-pytorch/blob/5208aada3330e366c74ce21f4701f8d2b6aa5761/nGPT_pytorch/nGPT.py
+# Based on: https://github.com/lucidrains/nGPT-pytorch/blob/5208aada3330e366c74ce21f4701f8d2b6aa5761/nGPT_pytorch/nGPT.py
 
 from __future__ import annotations
 
@@ -187,12 +187,6 @@ class FeedForward(Module):
         return self.to_out(hidden)
 
 # classes
-
-# NOTE / FIXME: nGPT is much slower than llama... Why?
-# NOTE: it may be due to the NormLinear layer; TODO: check if this is the case (i.e., %timeit for NormLinear vs Linear; both forward pass and backward pass)
-# if this is the issue, is there faster implementation?
-# TODO: also, unrelated: check whether randomly initialized Transformer model's embeddings grow in norm with depth
-# TODO: check effect of learning rate schedule; try training without warmup for nGPT-derivatives (i.e., is warmup unnecessary?)
 
 class nGPT(Module):
     def __init__(
