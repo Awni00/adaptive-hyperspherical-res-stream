@@ -209,7 +209,7 @@ class nGPT(Module):
         ff_expand_factor = 4.,
         ce_ignore_index = -1,
         manual_norm_weights = False, # constrain to unit norm through projection after each optimization step, rather than through parameterization (appears to be faster)
-        tied_embedding = False,
+        tied_embedding = True,
         num_hyperspheres = 1,
         causal = True,
         add_value_residual = True,
