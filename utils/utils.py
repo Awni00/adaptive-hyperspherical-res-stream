@@ -182,7 +182,7 @@ def get_cosine_schedule_with_warmup(optimizer, max_lr, lr_decay_steps, warmup_it
     warmup_steps : int
         The number of steps to increase the learning rate linearly in first phase. If None, defaults to 0.05 * lr_decay_steps.
     lr_decay_steps : int
-        The total number of steps.
+        The total number of steps to decay lr, after which lr is constant at min_lr.
 
     Returns
     -------
