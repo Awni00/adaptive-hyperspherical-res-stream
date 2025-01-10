@@ -6,6 +6,7 @@ from datetime import datetime
 from models.recurrent_llama import RecurrentTransformer as Llama
 from models.recurrent_llama import ModelArgs as LlamaArgs
 from models.recurrent_nGPT import RecurrentnGPT
+from models.transformer_baseline import RecurrentTransformerLM as BaselineRecurrentTransformer
 from utils.utils import get_cosine_schedule_with_warmup, format_large_number, AttributeDict
 
 class LitRecurrentTransformerLM(pl.LightningModule):
@@ -128,18 +129,25 @@ def get_experiment_name(model_config, data_config, train_config):
     model_str = f'{model_config.model_type} - L{model_config.n_layers}T{model_config.n_iters}H{model_config.n_heads}D{model_config.d_model}'
 
     if model_config.model_type == 'nGPT':
-        model_str += f' - {model_config.residual_module}'
+        ngpt_config = model_config['nGPT_kwargs']
 
-        if model_config.residual_module in ['ResidualSphericalSLERP', 'ResidualAdaptiveSphericalSLERP']:
-            model_str += f" - SW-{model_config.residual_module_kwargs['single_weight']}"
-        if 'n_spheres' in model_config.get('residual_module_kwargs', {}):
-            model_str += f" - NS-{model_config.residual_module_kwargs['n_spheres']}"
-        if 'slerp_weight_map' in model_config.get('residual_module_kwargs', {}):
-            model_str += f" - SWM-{model_config.residual_module_kwargs['slerp_weight_map']}"
-        if 'interpolation_weight_activation' in model_config.get('residual_module_kwargs', {}):
-            model_str += f" - IWAct-{model_config.residual_module_kwargs['interpolation_weight_activation']}"
-        if "manual_norm_weights" in model_config:
-            model_str += f" - MNW-{model_config.manual_norm_weights}"
+        model_str += f' - {ngpt_config.residual_module}'
+        if ngpt_config.residual_module in ['ResidualSphericalSLERP', 'ResidualAdaptiveSphericalSLERP']:
+            model_str += f" - SW-{ngpt_config.residual_module_kwargs['single_weight']}"
+        if 'n_spheres' in ngpt_config.get('residual_module_kwargs', {}):
+            model_str += f" - NS-{ngpt_config.residual_module_kwargs['n_spheres']}"
+        if 'slerp_weight_map' in ngpt_config.get('residual_module_kwargs', {}):
+            model_str += f" - SWM-{ngpt_config.residual_module_kwargs['slerp_weight_map']}"
+            if ngpt_config.get('residual_module_kwargs', {}).get('bias', None):
+                model_str += f"Bias"
+        if 'interpolation_weight_activation' in ngpt_config.get('residual_module_kwargs', {}):
+            model_str += f" - IWAct-{ngpt_config.residual_module_kwargs['interpolation_weight_activation']}"
+        if "manual_norm_weights" in ngpt_config:
+            model_str += f" - MNW-{ngpt_config.manual_norm_weights}"
+
+    if model_config.model_type == 'baseline_transformer':
+        baseline_kwargs = model_config.get('baseline_transformer_kwargs', {})
+        model_str += f' - GPTInit-{baseline_kwargs.gpt_special_init}'
 
     data_str = f'{data_config.sequence_length}'
 
@@ -159,24 +167,17 @@ def get_experiment_name(model_config, data_config, train_config):
     return group_name, run_name
 
 def parse_model_config(model_config):
-    # remove non-applicable keys
-    if model_config['model_type'] == 'llama':
-        model_config.pop('residual_module', None)
-        model_config.pop('residual_module_kwargs', None)
-        model_config.pop('manual_norm_weights', None)
-        model_config.pop('attn_norm_qk', None)
-        model_config.pop('num_hyperspheres', None)
-        model_config.pop('add_value_residual', None)
-
-    if model_config['model_type'] == 'nGPT':
-        if model_config['residual_module'] == 'SphericalLERP':
-            model_config.pop('residual_module_kwargs', None)
+    # remove non-applicable
+    for model_type in ['nGPT', 'llama', 'baseline_transformer']:
+        if model_config['model_type'] != model_type:
+            model_config.pop(f'{model_type}_kwargs', None)
 
     return model_config
 
 
 def create_model(model_config):
     if model_config['model_type'] == 'nGPT':
+        ngpt_kwargs = model_config.get('nGPT_kwargs', {})
         nGPT_config = dict(
             vocab_size=model_config['vocab_size'],
 
@@ -188,18 +189,19 @@ def create_model(model_config):
             tied_embedding=model_config['tied_embedding'],
 
             # residual module
-            residual_module=model_config.get('residual_module', 'SphericalLERP'),
-            residual_module_kwargs=model_config.get('residual_module_kwargs', None),
+            residual_module=ngpt_kwargs.get('residual_module', 'SphericalLERP'),
+            residual_module_kwargs=ngpt_kwargs.get('residual_module_kwargs', None),
 
             # parameterization of NormLinear
-            manual_norm_weights=model_config.get('manual_norm_weights', False),
+            manual_norm_weights=ngpt_kwargs.get('manual_norm_weights', False),
+            attn_norm_qk=ngpt_kwargs.get('attn_norm_qk', True), # whether to normalize q and k after {q,k} = x W_{q,k}
+            num_hyperspheres=ngpt_kwargs.get('num_hyperspheres', 1),
+            add_value_residual=ngpt_kwargs.get('add_value_residual', False), # this is based on https://arxiv.org/abs/2410.17897v1
 
-            attn_norm_qk=model_config.get('attn_norm_qk', True), # whether to normalize q and k after {q,k} = x W_{q,k}
-            ff_expand_factor=4, # fixed
+            # fixed
+            ff_expand_factor=4,
             ce_ignore_index=-1,
-            num_hyperspheres=model_config.get('num_hyperspheres', 1),
             causal=True,
-            add_value_residual=model_config.get('add_value_residual', False), # this is based on https://arxiv.org/abs/2410.17897v1
             )
 
         print('-'*50)
@@ -211,6 +213,8 @@ def create_model(model_config):
 
     elif model_config['model_type'] == 'llama':
         llama_config = LlamaArgs(
+            vocab_size = model_config['vocab_size'],
+
             dim=model_config['d_model'],
             n_layers = model_config['n_layers'],
             n_iters = model_config['n_iters'],
@@ -218,7 +222,6 @@ def create_model(model_config):
             tied_embedding=model_config['tied_embedding'],
 
             n_kv_heads = None,
-            vocab_size = model_config['vocab_size'],
             multiple_of = 256,  # make SwiGLU hidden layer size multiple of large power of 2
             ffn_dim_multiplier = None,
             norm_eps = 1e-5,
@@ -235,6 +238,32 @@ def create_model(model_config):
         print('-'*50)
 
         model = Llama(llama_config)
+
+    elif model_config['model_type'] == 'baseline_transformer':
+        baseline_kwargs = model_config.get('baseline_transformer_kwargs', {})
+        transformer_config = AttributeDict(
+            vocab_size = model_config['vocab_size'],
+
+            d_model = model_config['d_model'],
+            n_heads = model_config['n_heads'],
+            dff = model_config['d_model'] * 4,
+            n_layers = model_config['n_layers'],
+            n_iters = model_config['n_iters'],
+            tied_embedding = model_config['tied_embedding'],
+
+            mlp_activation = baseline_kwargs.get('mlp_activation', 'swiglu'),
+            pos_enc_type = baseline_kwargs.get('pos_enc_type', 'rotary'),
+            norm_config = baseline_kwargs.norm_config,
+            bias = baseline_kwargs.get('bias', False),
+            gpt_special_init = baseline_kwargs.get('gpt_special_init', False),
+            )
+
+        print('-'*50)
+        print('Baseline Transformer config')
+        print(AttributeDict(transformer_config))
+        print('-'*50)
+
+        model = BaselineRecurrentTransformer(transformer_config)
     else:
         raise ValueError(f'Invalid model type: {model_config["model_type"]}')
 
