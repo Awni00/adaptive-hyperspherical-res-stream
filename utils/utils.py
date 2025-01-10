@@ -44,7 +44,15 @@ class AttributeDict(Dict):
             return ""
         max_key_length = max(len(str(k)) for k in self)
         tmp_name = "{:" + str(max_key_length + 3) + "s} {}"
-        rows = [tmp_name.format(f'"{n}":', self[n]) for n in sorted(self.keys())]
+        # rows = [tmp_name.format(f'"{n}":', self[n]) for n in sorted(self.keys())]
+        rows = []
+        for n in sorted(self.keys()):
+            val = self[n]
+            if isinstance(val, AttributeDict):
+                val = val.__repr__()
+                # add newline at begining and tab at start of each line
+                val = "\n\t" + val.replace("\n", "\n\t")
+            rows.append(tmp_name.format(f'"{n}":', val))
         return "\n".join(rows)
 
     def todict(self) -> dict:
