@@ -257,7 +257,7 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
         Performs the spherical interpolation on the hypersphere between tensors x and y = self.fn(x).
     """
 
-    def __init__(self, fn, dim, n_spheres=1, single_weight=True, slerp_weight_map='NormLinear', interpolation_weight_activation='sigmoid', parametrize=True):
+    def __init__(self, fn, dim, n_spheres=1, single_weight=True, slerp_weight_map='NormLinear', interpolation_weight_activation='sigmoid', parametrize=True, bias=False):
         super().__init__()
 
         self.fn = fn
@@ -275,14 +275,14 @@ class ResidualAdaptiveSphericalSLERP(nn.Module):
         # otherwise, use a separate weight for each dimension
         if slerp_weight_map == 'NormLinear':
             if single_weight:
-                self.slerp_weight_map = NormLinear(dim, self.n_spheres, norm_dim_in=True, parametrize=parametrize)
+                self.slerp_weight_map = NormLinear(dim, self.n_spheres, norm_dim_in=True, parametrize=parametrize, bias=bias)
             else:
-                self.slerp_weight_map = NormLinear(dim, dim, norm_dim_in=True, parametrize=parametrize)
+                self.slerp_weight_map = NormLinear(dim, dim, norm_dim_in=True, parametrize=parametrize, bias=bias)
         elif slerp_weight_map == 'Linear':
             if single_weight:
-                self.slerp_weight_map = nn.Linear(dim, self.n_spheres)
+                self.slerp_weight_map = nn.Linear(dim, self.n_spheres, bias=bias)
             else:
-                self.slerp_weight_map = nn.Linear(dim, dim)
+                self.slerp_weight_map = nn.Linear(dim, dim, bias=bias)
         else:
             raise ValueError('Invalid slerp_weight_map')
 
