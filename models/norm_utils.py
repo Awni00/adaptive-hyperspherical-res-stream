@@ -73,7 +73,8 @@ class NormLinear(Module):
         norm_dim_in = True,
         parametrize = True,
         norm_eps = 0.,
-        groups = 1
+        groups = 1,
+        bias=False
     ):
         """
         An L2-Normalized Linear layer.
@@ -103,10 +104,14 @@ class NormLinear(Module):
         groups : int, optional
             Optionally, chunk/group the `dim` input dimensions and normalize weights across each group.
             By default 1, corresponding to no grouping.
+        bias : bool, optional
+            Whether to include bias in the linear transformation. Including a bias partially negates the interpretation
+            of this operation as purely representing a cosine similarity (i.e., angle) between the input and the parameters.
+            Default is False.
         """
 
         super().__init__()
-        self.linear = nn.Linear(dim, dim_out, bias = False)
+        self.linear = nn.Linear(dim, dim_out, bias=bias)
 
         self.scale = groups ** -1
         self.parametrize = parametrize
