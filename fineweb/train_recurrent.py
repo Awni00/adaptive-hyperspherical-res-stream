@@ -187,7 +187,7 @@ if not args.debug:
         log_model=train_config.wandb_config.get('log_model', False)
         )
 
-    if getattr(train_config.wandb_config, 'watch', False):
+    if train_config.wandb_config.get('watch', False):
         logger.watch(litmodel.model, log='all', log_graph=True)
 else:
     logger = None
