@@ -9,6 +9,7 @@ from torch import nn
 from torch.nn import Module, ModuleList
 import torch.nn.functional as F
 from torch.nn.utils.parametrize import register_parametrization
+import math
 
 from einops import rearrange, einsum
 from einops.layers.torch import Rearrange
@@ -60,7 +61,8 @@ class RecurrentnGPT(Module):
             enable_math = True,
             enable_mem_efficient = True
         ),
-        norm_eps = 0. # greater than 0 allows the norm to be around (1. - norm_eps) to (1. + norm_eps)
+        norm_eps = 0., # greater than 0 allows the norm to be around (1. - norm_eps) to (1. + norm_eps)
+        gpt_special_init=False # temporary flag for initialization (FIXME: in principle, should be unncessary)
     ):
         super().__init__()
         NormLinear_ = partial(NormLinear, parametrize = not manual_norm_weights, norm_eps = norm_eps, groups = num_hyperspheres)
@@ -174,6 +176,27 @@ class RecurrentnGPT(Module):
         self.logit_scale = Scale(vocab_size, s_logit_init, default(s_logit_scale, dim ** -0.5))
 
         self.ignore_index = ce_ignore_index
+
+        # TODO: special initialization??
+        # initialize weights
+        if gpt_special_init:
+            self.apply(self._init_weights)
+
+            for pn, p in self.named_parameters():
+                if 'to_out' in pn and pn.endswith('.weight'):
+                    torch.nn.init.normal_(p,
+                        mean=0.0, std=0.02 / math.sqrt(2 * depth))
+
+        # norm weights
+        self.norm_weights_()
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     @torch.no_grad()
     def norm_weights_(self):
